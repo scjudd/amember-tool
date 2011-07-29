@@ -1,0 +1,16 @@
+# Python poop
+*.pyc
+
+# DB dregs
+*.csv
+
+# VIM vestiges
+*~
+*.swp
+*.swo
+*.swn
+*.swm
+
+# Dotfile droppings
+.*
+!.gitignore
