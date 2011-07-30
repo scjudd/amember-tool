@@ -2,34 +2,27 @@
 
 import urllib, urllib2, cookielib
 import datetime, re
+import string, random # for password generation
 
 class Error(Exception):
     """ Base class for exceptions in this module. """
-    pass
+    def __init__(self, value):
+        self.value = value
 
 class LoginError(Error):
     """ Raised when a login operation fails. """
-
-    def __init__(self, username):
-        self.username = username
     def __str__(self):
-        return repr("Error logging in as %s" % self.username)
+        return repr("Error logging in as %s" % self.value)
 
 class UserExistsError(Error):
     """ Raised when trying to create a username that already exists in the system. """
-
-    def __init__(self, username):
-        self.username = username
     def __str__(self):
-        return repr("User '%s' already exists!" % self.username)
+        return repr("User '%s' already exists!" % self.value)
 
 class UserUpdateError(Error):
     """ Raised when an error occurs in trying to update existing user information. """
-
-    def __init__(self, member_id):
-        self.member_id = member_id
     def __str__(self):
-        return repr("Could not update user info for user '%s'!" % self.member_id)
+        return repr("Could not update user info for user '%s'!" % self.value)
 
 class AmemberSession(object):
     """ An aMember Session """
@@ -40,8 +33,12 @@ class AmemberSession(object):
         self.password = password
         
         self.opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cookielib.CookieJar()))
+        self.__login()
 
-    def login(self):
+    def __del__(self):
+        self.__logout()
+
+    def __login(self):
         """ Log in to aMember """
 
         url = '%s/index.php' % self.url
@@ -57,7 +54,7 @@ class AmemberSession(object):
         if "PHPSESSID" not in response.read():
             raise LoginError(self.username)
 
-    def logout(self):
+    def __logout(self):
         """ Log out of aMember """
 
         url = '%s/logout.php' % self.url
@@ -67,7 +64,7 @@ class AmemberSession(object):
         """ Add a user to aMember """
 
         username = ''.join([first_name[0].lower(), last_name.lower()])
-        password = 'test123' # TODO: Add password generation
+        password = self.__generate_password(10)
 
         url = '%s/users.php' % self.url
         data = {
@@ -99,6 +96,12 @@ class AmemberSession(object):
         else:
             data['member_id'] = re.search('member_id=(\d{1,5})', html).group(1)
             return data
+
+    def __generate_password(self, length):
+        """ Generate a random password of a given length. """
+
+        s = string.lowercase + string.uppercase + string.digits
+        return ''.join(random.choice(s) for i in range(length))
 
     def del_user(self, member_id):
         """ Remove a user from aMember based on the member_id """
@@ -140,17 +143,30 @@ class AmemberSession(object):
             raise UserUpdateError(member_id)
 
 
-if __name__ == '__main__':
-    a = AmemberSession('http://iccaonline.net/amember/admin', 'admin', '')
-    a.login()
-
-    member_id = a.add_user('Testy', 'McTestington', 'spencercjudd@gmail.com', '123-456-7890', '123 Test St.', 'Testington', 'TX', '12345')['member_id']
-
-    product_id = 4 # ICCA AACC Preferred Member
-    start_date = datetime.date.today()
-    end_date = start_date.replace(year=start_date.year+1)
-    a.add_subscription(member_id, product_id, start_date, end_date)
-    
-    #a.del_user(member_id)
-
-    a.logout()
+# if __name__ == '__main__':
+#     a = AmemberSession('http://iccaonline.net/amember/admin', 'admin', 'password')
+# 
+#     import csv
+# 
+#     data = csv.DictReader(open('preferred.csv', 'rb'))
+# 
+#     for p in data:
+#         m = a.add_user(
+#             p['first_name'].strip(),
+#             p['last_name'].strip(),
+#             #p['email'].strip(),
+#             'spencercjudd@gmail.com',
+#             p['phone'].strip(),
+#             p['street'].strip(),
+#             p['city'].strip(),
+#             p['state'].strip(),
+#             p['zipcode'].strip()
+#         )
+# 
+#         product_id = 4 # ICCA AACC Preferred Member
+#         start_date = datetime.date.today()
+#         end_date = start_date.replace(year=start_date.year+1)
+# 
+#         a.add_subscription(m['member_id'], product_id, start_date, end_date)
+# 
+#         print("Added User: %s (%s). Password: '%s'." % (m['login'], m['member_id'], m['pass']))
