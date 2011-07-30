@@ -1,87 +1,156 @@
 #!/usr/bin/env python
 
 import urllib, urllib2, cookielib
-import re
-cj = cookielib.CookieJar()
-opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cj))
+import datetime, re
 
-USERNAME = 'admin'
-PASSWORD = ''
+class Error(Exception):
+    """ Base class for exceptions in this module. """
+    pass
 
-# 1. Login
+class LoginError(Error):
+    """ Raised when a login operation fails. """
 
-url = 'http://iccaonline.net/amember/admin/index.php'
-data = 'passwd=%s&login=%s&do_login=1' % (PASSWORD, USERNAME)
-req = urllib2.Request(url, data)
-response = opener.open(req)
+    def __init__(self, username):
+        self.username = username
+    def __str__(self):
+        return repr("Error logging in as %s" % self.username)
 
-if "PHPSESSID" in response.read():
-    print("Login successful!\n")
-else:
-    print("Login failed!")
-    quit()
+class UserExistsError(Error):
+    """ Raised when trying to create a username that already exists in the system. """
+
+    def __init__(self, username):
+        self.username = username
+    def __str__(self):
+        return repr("User '%s' already exists!" % self.username)
+
+class UserUpdateError(Error):
+    """ Raised when an error occurs in trying to update existing user information. """
+
+    def __init__(self, member_id):
+        self.member_id = member_id
+    def __str__(self):
+        return repr("Could not update user info for user '%s'!" % self.member_id)
+
+class AmemberSession(object):
+    """ An aMember Session """
+
+    def __init__(self, url, username, password):
+        self.url = url # TODO: add logic to chomp off trailing '/'.. make sure /admin/ in url..
+        self.username = username
+        self.password = password
+        
+        self.opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cookielib.CookieJar()))
+
+    def login(self):
+        """ Log in to aMember """
+
+        url = '%s/index.php' % self.url
+        data = {
+            'login': self.username,
+            'passwd': self.password,
+            'do_login': '1',
+        }
+        request = urllib2.Request(url, urllib.urlencode(data))
+        response = self.opener.open(request)
+
+        # Raise an exception if login fails.
+        if "PHPSESSID" not in response.read():
+            raise LoginError(self.username)
+
+    def logout(self):
+        """ Log out of aMember """
+
+        url = '%s/logout.php' % self.url
+        response = self.opener.open(url)
+
+    def add_user(self, first_name, last_name, email, phone, street, city, state, zipcode, country='US'):
+        """ Add a user to aMember """
+
+        username = ''.join([first_name[0].lower(), last_name.lower()])
+        password = 'test123' # TODO: Add password generation
+
+        url = '%s/users.php' % self.url
+        data = {
+            'member_id': '',
+            'login': username,
+            'pass': password,
+            'email': email,
+            'name_f': first_name,
+            'name_l': last_name,
+            'country': country,
+            'street': street,
+            'city': city,
+            'state': state,
+            'zip': zipcode,
+            'phone': phone,
+        }
+        extra = {
+            'unsubscribed': '0',
+            'aff_param': '',
+            'action': 'add_save'
+        }
+        request = urllib2.Request(url, urllib.urlencode(dict(data.items() + extra.items())))
+        response = self.opener.open(request)
+
+        # Raise an exception if the username already exists in aMember.
+        html = response.read()
+        if 'please choose another username' in html:
+            raise UserExistsError(username)
+        else:
+            data['member_id'] = re.search('member_id=(\d{1,5})', html).group(1)
+            return data
+
+    def del_user(self, member_id):
+        """ Remove a user from aMember based on the member_id """
+
+        url = '%s/users.php' % self.url
+        data = {
+            'member_id': member_id,
+            'action': 'delete',
+            'confirm': ' Yes ',
+        }
+        response = self.opener.open(url, urllib.urlencode(data))
+
+    def add_subscription(self, member_id, product_id, start_date, end_date):
+        """ Add a subscription to a given member. """
+
+        url = '%s/users.php' % self.url
+        data = {
+            'member_id': member_id,
+            'product_id': product_id,
+            'begin_dateMonth': str(start_date.month).rjust(2,'0'),
+            'begin_dateDay': str(start_date.day).rjust(2,'0'),
+            'begin_dateYear': str(start_date.year),
+            'expire_dateMonth': str(end_date.month).rjust(2,'0'),
+            'expire_dateDay': str(end_date.day).rjust(2,'0'),
+            'expire_dateYear': str(end_date.year),
+        }
+        extra = {
+            'receipt_id': 'manual',
+            'paysys_id': 'free',
+            'amount': '0',
+            'completed': '1',
+            'payment_id': '',
+            'action': 'payment_add',
+        }
+        request = urllib2.Request(url, urllib.urlencode(dict(data.items() + extra.items())))
+        response = self.opener.open(request)
+
+        if "Member Info Updated" not in response.read():
+            raise UserUpdateError(member_id)
 
 
-# 2. Enter POST loop
+if __name__ == '__main__':
+    a = AmemberSession('http://iccaonline.net/amember/admin', 'admin', '')
+    a.login()
 
-# Add Member
-url = 'http://iccaonline.net/amember/admin/users.php'
-user_data = {
-    'member_id': '',
-    'login': 'testtest',
-    'pass': 'testtest',
-    'email': 'test@test.com',
-    'name_f': 'Testy',
-    'name_l': 'McTestington',
-    'country': 'US',
-    'street': '123 Test St.',
-    'city': 'Testington',
-    'state': 'TX',
-    'zip': '12345',
-    'phone': '1234567890',
+    member_id = a.add_user('Testy', 'McTestington', 'spencercjudd@gmail.com', '123-456-7890', '123 Test St.', 'Testington', 'TX', '12345')['member_id']
 
-    'unsubscribed': '0',
-    'aff_param': '',
-    'action': 'add_save'
-}
-req = urllib2.Request(url, urllib.urlencode(user_data))
-response = opener.open(req)
+    product_id = 4 # ICCA AACC Preferred Member
+    start_date = datetime.date.today()
+    end_date = start_date.replace(year=start_date.year+1)
+    a.add_subscription(member_id, product_id, start_date, end_date)
+    
+    #a.del_user(member_id)
 
-html = response.read()
-if 'please choose another username' in html:
-    print("Error! Username '%s' already taken!" % user_data['login'])
-else:
-    print("User '%s' successfully registered!" % user_data['login'])
-    member_id = re.search('member_id=(\d{1,5})', html).group(1)
-
-    # Add Subscription
-    url = 'http://iccaonline.net/amember/admin/users.php'
-    payment_data = {
-        'receipt_id': 'manual',
-        'amount': '0',
-        'completed': '1',
-        'payment_id': '',
-        'member_id': member_id,
-        'action': 'payment_add',
-
-        'product_id': '4', # ICCA AACC Preferred Member
-        'begin_dateMonth': '07',
-        'begin_dateDay': '29',
-        'begin_dateYear': '2011',
-        'expire_dateMonth': '07',
-        'expire_dateDay': '29',
-        'expire_dateYear': '2012',
-        'paysys_id': 'free',
-    }
-    req = urllib2.Request(url, urllib.urlencode(payment_data))
-    response = opener.open(req)
-
-    if "Member Info Updated" in response.read():
-        print("Added payment info for '%s'!" % user_data['login'])
-    else:
-        print("Error updating payment info for '%s'!" % user_data['login'])
-
-
-# Logout
-url = 'http://iccaonline.net/amember/admin/logout.php'
-response = opener.open(url)
+    a.logout()
