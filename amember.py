@@ -9,7 +9,6 @@ USERNAME = 'admin'
 PASSWORD = ''
 
 # 1. Login
-# POST to: http://iccaonline.net/amember/admin/index.php
 
 url = 'http://iccaonline.net/amember/admin/index.php'
 data = 'passwd=%s&login=%s&do_login=1' % (PASSWORD, USERNAME)
@@ -26,10 +25,8 @@ else:
 # 2. Enter POST loop
 
 # Add Member
-# http://iccaonline.net/amember/admin/users.php?action=add_form
-# POST to: /amember/admin/users.php
 url = 'http://iccaonline.net/amember/admin/users.php'
-data = {
+user_data = {
     'member_id': '',
     'login': 'testtest',
     'pass': 'testtest',
@@ -47,43 +44,44 @@ data = {
     'aff_param': '',
     'action': 'add_save'
 }
-req = urllib2.Request(url, urllib.urlencode(data))
+req = urllib2.Request(url, urllib.urlencode(user_data))
 response = opener.open(req)
 
 html = response.read()
 if 'please choose another username' in html:
-    print("Error! Username '%s' already taken!" % data['login'])
+    print("Error! Username '%s' already taken!" % user_data['login'])
 else:
-    print("User '%s' successfully registered!" % data['login'])
-
+    print("User '%s' successfully registered!" % user_data['login'])
     member_id = re.search('member_id=(\d{1,5})', html).group(1)
-    print("Member ID: %s" % member_id)
 
     # Add Subscription
-    # http://iccaonline.net/amember/admin/users.php?member_id=131&action=payment
-    # POST to: /amember/admin/users.php
     url = 'http://iccaonline.net/amember/admin/users.php'
-    data = {
+    payment_data = {
         'receipt_id': 'manual',
         'amount': '0',
         'completed': '1',
         'payment_id': '',
         'member_id': member_id,
-        'action': 'payment_add'
+        'action': 'payment_add',
+
+        'product_id': '4', # ICCA AACC Preferred Member
+        'begin_dateMonth': '07',
+        'begin_dateDay': '29',
+        'begin_dateYear': '2011',
+        'expire_dateMonth': '07',
+        'expire_dateDay': '29',
+        'expire_dateYear': '2012',
+        'paysys_id': 'free',
     }
-    req = urllib2.Request(url, urllib.urlencode(data))
+    req = urllib2.Request(url, urllib.urlencode(payment_data))
     response = opener.open(req)
 
-    print('\n'+response.read())
+    if "Member Info Updated" in response.read():
+        print("Added payment info for '%s'!" % user_data['login'])
+    else:
+        print("Error updating payment info for '%s'!" % user_data['login'])
 
 
-# 3. Logout
-# GET to: http://iccaonline.net/amember/admin/logout.php
-
+# Logout
 url = 'http://iccaonline.net/amember/admin/logout.php'
 response = opener.open(url)
-
-if "Logged out" in response.read():
-    print("\nLogged out!")
-else:
-    print("\nError logging out!")
