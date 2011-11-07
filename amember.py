@@ -60,10 +60,11 @@ class AmemberSession(object):
         url = '%s/logout.php' % self.url
         response = self.opener.open(url)
 
-    def add_user(self, first_name, last_name, email, phone, street, city, state, zipcode, country='US'):
+    def add_user(self, first_name, last_name, email, phone, street, city, state, zipcode, country='US', username=None):
         """ Add a user to aMember """
 
-        username = ''.join([first_name[0].lower(), last_name.lower()])
+        if username is None:
+            username = ''.join([first_name[0].lower(), last_name.lower()])
         password = self.__generate_password(10)
 
         url = '%s/users.php' % self.url
@@ -89,13 +90,25 @@ class AmemberSession(object):
         request = urllib2.Request(url, urllib.urlencode(dict(data.items() + extra.items())))
         response = self.opener.open(request)
 
-        # Raise an exception if the username already exists in aMember.
-        html = response.read()
-        if 'please choose another username' in html:
-            raise UserExistsError(username)
-        else:
-            data['member_id'] = re.search('member_id=(\d{1,5})', html).group(1)
-            return data
+        try:
+            # Raise an exception if the username already exists in aMember.
+            html = response.read()
+            if 'please choose another username' in html:
+                raise UserExistsError(username)
+            else:
+                data['member_id'] = re.search('member_id=(\d{1,5})', html).group(1)
+                return data
+
+        except UserExistsError:
+            try:
+                num = int(re.search(r'^(.*)(\d+)$', username).group(2))
+                num += 1
+                username = re.search(r'^(.*)(\d+)$', username).group(1)
+            except AttributeError:
+                num = 1
+
+            username = username+str(num)
+            return self.add_user(first_name, last_name, email, phone, street, city, state, zipcode, country, username)
 
     def __generate_password(self, length):
         """ Generate a random password of a given length. """
@@ -143,30 +156,49 @@ class AmemberSession(object):
             raise UserUpdateError(member_id)
 
 
-# if __name__ == '__main__':
-#     a = AmemberSession('http://iccaonline.net/amember/admin', 'admin', 'password')
-# 
-#     import csv
-# 
-#     data = csv.DictReader(open('preferred.csv', 'rb'))
-# 
-#     for p in data:
-#         m = a.add_user(
-#             p['first_name'].strip(),
-#             p['last_name'].strip(),
-#             #p['email'].strip(),
-#             'spencercjudd@gmail.com',
-#             p['phone'].strip(),
-#             p['street'].strip(),
-#             p['city'].strip(),
-#             p['state'].strip(),
-#             p['zipcode'].strip()
-#         )
-# 
-#         product_id = 4 # ICCA AACC Preferred Member
-#         start_date = datetime.date.today()
-#         end_date = start_date.replace(year=start_date.year+1)
-# 
-#         a.add_subscription(m['member_id'], product_id, start_date, end_date)
-# 
-#         print("Added User: %s (%s). Password: '%s'." % (m['login'], m['member_id'], m['pass']))
+if __name__ == '__main__':
+    print("Logging in..")
+    a = AmemberSession('http://iccaonline.net/amember/admin', 'admin', 'password')
+
+    #for i in range(188,258):
+    #    print("Deleting user: "+str(i))
+    #    a.del_user(i)
+    #quit()
+
+    import csv
+
+    data = csv.DictReader(open('premium-errors.csv', 'rb'))
+    output = csv.writer(open('premium-done.csv', 'wa'))
+    output.writerow(['first_name','last_name','email','member_id','username','password','level'])
+
+    for p in data:
+        print("Creating user for %s %s" % (p['first_name'], p['last_name']))
+        m = a.add_user(
+            p['first_name'].strip(),
+            p['last_name'].strip(),
+            p['email'].strip(),
+            p['phone'].strip(),
+            p['street'].strip(),
+            p['city'].strip(),
+            p['state'].strip(),
+            p['zipcode'].strip()
+        )
+
+        product_id = 2 # ICCA Premium Charter Member
+        start_date = datetime.date.today()
+        end_date = start_date.replace(year=start_date.year+1)
+
+        print("Adding subscription for %s" % m['login'])
+        a.add_subscription(m['member_id'], product_id, start_date, end_date)
+
+        output.writerow([
+            p['first_name'],
+            p['last_name'],
+            p['email'],
+            m['member_id'],
+            m['login'],
+            m['pass'],
+            p['level'],
+        ])
+
+        print("[+] Added User: %s (%s). Password: '%s'." % (m['login'], m['member_id'], m['pass']))
